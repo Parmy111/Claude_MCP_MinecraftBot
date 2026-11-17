@@ -49,6 +49,19 @@ async def break_block(x: int, y: int, z: int) -> str:
         return "Can't reach the bot. Is bot.py running?"
     return resp["result"] if resp["ok"] else f"Failed: {resp['error']}"
 
+
+@mcp.tool()
+async def move_to(x: int, y: int, z: int) -> str:
+    """Using the action_move command, move the bot to a specific location without
+    using the TP command."""
+    try:
+        resp = await send_to_bot("move_to", {"x": x, "y": y, "z": z})
+    except httpx.ConnectError:
+        return "Can't reach the bot. Is bot.py running?"
+    return resp["result"] if resp["ok"] else f"Failed: {resp['error']}"
+
+
+
 #Claude ──MCP/stdio──▶ mcp_server.py ──HTTP (httpx)──▶ bot.py ──bridge──▶ Mineflayer ──▶ Minecraft
 if __name__ == "__main__":
     mcp.run(transport="stdio")
