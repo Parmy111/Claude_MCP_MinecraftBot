@@ -21,6 +21,11 @@ mineflayer = require('mineflayer')
 # Load vec3, the JavaScript class Mineflayer uses for (x, y, z) positions
 vec3_module = require('vec3')
 Vec3 = vec3_module.Vec3   # shortcut so we can write Vec3(x, y, z)
+# Load the pathfinder plugin (navigation: routes, jumping, going around walls)
+pathfinder_module = require('mineflayer-pathfinder')
+pathfinder = pathfinder_module.pathfinder   # the plugin itself, passed to bot.loadPlugin()
+Movements = pathfinder_module.Movements     # rules for how the bot may move (jump, break blocks, etc.)
+goals = pathfinder_module.goals             # goal types, e.g. goals.GoalBlock(x, y, z)
 
 # Create the bot and connect it to a Minecraft server running on this computer.
 # It joins as a player named "PythonBot".
@@ -29,6 +34,17 @@ bot = mineflayer.createBot({
     'username': 'PythonBot',
 })
 
+# Load the pathfinder plugin ONCE, right after the bot is created.
+# This is what adds bot.pathfinder (it doesn't exist until this runs).
+bot.loadPlugin(pathfinder)
+
+
+# Movements needs the bot's Minecraft data, which is only ready once the bot
+# has joined the world. So we set it up when the 'spawn' event fires
+# instead of immediately.
+@On(bot, 'spawn')
+def on_spawn(*args):
+    bot.pathfinder.setMovements(Movements(bot))
 
 # ---------- In-game chat commands (unchanged behavior) ----------
 # These respond to people typing in Minecraft chat. They are separate from
@@ -182,6 +198,7 @@ def action_place_block(params):
     # Went through all 6 neighbors and found nothing solid to click against
     raise ValueError("No solid adjacent block to place against (target is floating in air)")
 
+#Action: break the block at a specific point.
 def action_break_block(params):
     try:
         x, y, z = int(params["x"]), int(params["y"]), int(params["z"])
@@ -192,12 +209,47 @@ def action_break_block(params):
         raise ValueError("Already digging a block")
     
     target = bot.blockAt(Vec3(x, y, z))
+    # FIX: blockAt can return nothing (unloaded area), and there's nothing to break in air
+    if not target or target.name in AIR:
+        raise ValueError("There's no block to break there")
     if bot.entity.position.distanceTo(Vec3(x + 0.5, y + 0.5, z + 0.5)) > 4.5:
         raise ValueError("Target is out of reach (must be within ~4.5 blocks)")
 
     name = target.name        # save it before the block changes
     bot.dig(target)
     return f"Broke {name} at ({x}, {y}, {z})"
+
+#The point of this action is to walk the bot to a specific location using pathfinding.
+def action_move(params):
+    # FIX: three separate int() conversions (int() with 3 arguments is invalid)
+    try:
+        x, y, z = int(params["x"]), int(params["y"]), int(params["z"])
+    except (KeyError, TypeError, ValueError):
+        raise ValueError("'x', 'y' and 'z' are required integers")
+
+    # FIX: actually call isMoving(). Before, the method itself was tested, which is always true.
+    if bot.pathfinder.isMoving():
+        raise ValueError("Already moving!")
+
+    # (Plugin loading and Movements setup now happen once at startup, above.)
+    goal = goals.GoalBlock(x, y, z)
+    bot.pathfinder.setGoal(goal)   # starts moving and returns immediately
+
+    # FIX: setGoal doesn't wait, so wait here until the bot arrives or we time out.
+    # We check distance to the target instead of isMoving(), because isMoving()
+    # can read false for a moment while the path is still being calculated.
+    target_center = Vec3(x + 0.5, y + 0.5, z + 0.5)
+    start = time.time()
+    while time.time() - start < 75:
+        if bot.entity.position.distanceTo(target_center) < 1.5:
+            return f"Arrived at ({x}, {y}, {z})"
+        time.sleep(0.25)
+
+    # Took too long: cancel the goal so the bot stops trying, then report it
+    bot.pathfinder.setGoal(None)
+    raise ValueError(f"Timed out; couldn't reach ({x}, {y}, {z}) within 30 seconds")
+
+
 
 # Action: fly the bot to coordinates (needs creative mode).
 # NOTE: this is not in the ACTIONS dict below yet, so nothing can call it.
@@ -219,7 +271,8 @@ def fly_to_location(params):
 ACTIONS = {
     "say": action_say,
     "place_block": action_place_block,
-    "break_block": action_break_block
+    "break_block": action_break_block,
+    "move_to": action_move
 }
 
 
