@@ -1,7 +1,7 @@
 import httpx
 from mcp.server.fastmcp import FastMCP
 from minecraft_tools import get_online_players
-from minecraft_client import send_to_bot
+from minecraft_client_2 import send_to_bot
 
 mcp = FastMCP("minecraft-tools")
 
