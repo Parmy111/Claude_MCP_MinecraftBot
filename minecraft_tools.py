@@ -1,4 +1,4 @@
-from minecraft_client import call_minecraft
+from minecraft_client_2 import call_minecraft
 
 async def get_online_players():
     response = await call_minecraft("minecraft:players")

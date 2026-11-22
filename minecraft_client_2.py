@@ -23,7 +23,7 @@ async def call_minecraft(method, params=None):
 
 
 async def send_to_bot(action, params):
-    async with httpx.AsyncClient(timeout=15) as client:
+    async with httpx.AsyncClient(timeout=30) as client:
         response = await client.post(BOT_URL, json={"action": action, "params": params})
         return response.json()
 
