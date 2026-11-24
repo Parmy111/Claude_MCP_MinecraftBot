@@ -174,13 +174,31 @@ def action_place_block(params):
         raise ValueError(f"Target is {dist:.1f} blocks away; must be within ~4.5")
 
     # CHECK 3: does the bot have that block in its inventory?
-    item = None
-    for candidate in bot.inventory.items():
-        if candidate.name == block_name:
-            item = candidate
-            break
+    # If not, ask the server to give it one (works in creative / with operator rights).
+    # Small helper that searches the inventory and returns the item, or None.
+    def find_item():
+        for candidate in bot.inventory.items():
+            if candidate.name == block_name:
+                return candidate
+        return None
+
+    item = find_item()
     if item is None:
-        raise ValueError(f"No {block_name} in inventory")
+        # Not in inventory: type the /give command in chat
+        bot.chat(f"/give {bot.username} {block_name} 1")
+        # The server needs a moment to run the command and update the inventory,
+        # so wait (up to ~2 seconds) and re-check instead of using it immediately.
+        # Re-searching also gives us a real item object, which equip() requires.
+        for _ in range(20):
+            time.sleep(0.5)
+            item = find_item()
+            if item is not None:
+                break
+    # Still nothing: the give didn't work (not an operator, or a bad block name)
+    if item is None:
+        raise ValueError(
+            f"No {block_name} in inventory and /give didn't work (is the bot an operator, and is the block name valid?)")
+
 
     # Minecraft can only place a block by clicking the face of an EXISTING block.
     # So check each of the 6 neighbors of the target and use the first solid one.
